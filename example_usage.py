@@ -3,7 +3,7 @@
 Example usage of the eqdsk2vmec_converter package.
 """
 
-from eqdsk2vmec_converter import convert_eqdsk_to_vmec
+from source import convert_eqdsk_to_vmec
 
 def main():
     # Example usage

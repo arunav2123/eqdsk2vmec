@@ -1,6 +1,6 @@
 import unittest
 import os
-from eqdsk2vmec_converter.eqdsk2vmec import convert_eqdsk_to_vmec
+from source.eqdsk2vmec import convert_eqdsk_to_vmec
 
 class TestConverter(unittest.TestCase):
 

@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="eqdsk2vmec",
     version="0.1.0",
-    packages=find_packages(),
+    packages=find_packages(where='source'),
     install_requires=[
         "numpy",
         "freeqdsk",
