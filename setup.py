@@ -9,7 +9,6 @@ setup(
         "freeqdsk",
     ],
     author="Arunav Kumar",
-    author_email="arunavk@mit.edu",
     description="A Python package to convert EQDSK files to VMEC input format.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

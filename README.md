@@ -1,15 +1,15 @@
-# EQDSK to VMEC Converter
+# GEQDSK to VMEC Converter
 
-A Python package to convert EQDSK files to VMEC input format, translated from MATLAB code.
+A Python package to convert GEQDSK files to VMEC input format, translated from MATLAB code.
 
 ## Overview
 
-This package provides functionality to read EQDSK (Equilibrium Disk) files and convert them to VMEC (Variational Moments Equilibrium Code) input format. It is based on the translation of MATLAB code that performs similar conversions for tokamak plasma equilibrium data.
+This package provides functionality to read GEQDSK (Equilibrium Disk) files and convert them to VMEC (Variational Moments Equilibrium Code) input format. It is based on the translation of MATLAB code that performs similar conversions for tokamak plasma equilibrium data.
 
 ## Features
 
-- Read EQDSK files using the `freeqdsk` library
-- Convert EQDSK data to VMEC input parameters
+- Read GEQDSK files 
+- Convert GEQDSK data to VMEC input parameters
 - Generate VMEC namelist input files
 - Support for various VMEC configuration parameters
 
