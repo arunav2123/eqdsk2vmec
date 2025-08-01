@@ -1,10 +1,10 @@
 import numpy as np
+import datetime
 
 class VMECNamelist:
     """VMEC namelist data structure"""
 
     def __init__(self):
-        # Default VMEC parameters
         self.datatype = 'VMEC_input'
         self.delt = 1.0
         self.niter = 20000
@@ -48,7 +48,6 @@ class VMECNamelist:
         self.raxis_cs = []
         self.zaxis_cc = []
         self.zaxis_cs = []
-        # Fourier coefficient arrays (boundary)
         self.rbc = np.array([])
         self.zbs = np.array([])
         self.rbs = np.array([])
@@ -58,13 +57,10 @@ def vmec_namelist_init(namelist_name):
     """Initialize VMEC namelist"""
     return VMECNamelist()
 
-# --------- Helper Writers ----------
-
 def write_namelist_int(f, name, val):
     f.write(f"  {name.upper()} = {int(val)}\n")
 
 def write_namelist_flt(f, name, val):
-    # Fortran double precision formatting
     f.write(f"  {name.upper()} = {float(val):21.14E}\n")
 
 def write_namelist_boo(f, name, val):
@@ -90,15 +86,13 @@ def write_namelist_vec(f, name, arr, typ=None, per_line=8):
             if (i+1) % per_line == 0 and (i+1) < len(arr):
                 f.write("\n    ")
         f.write("\n")
-    else:  # default: output as float
+    else:
         f.write(f"  {name.upper()} =")
         for i, v in enumerate(arr):
             f.write(f" {v}")
             if (i+1) % per_line == 0 and (i+1) < len(arr):
                 f.write("\n    ")
         f.write("\n")
-
-# --------- Main Writer ----------
 
 def write_vmec_input(filename, data):
     """
@@ -207,22 +201,22 @@ def write_vmec_input(filename, data):
             write_namelist_vec(f, 'AC_AUX_F', data.ac_aux_f[:dex], typ='flt')
 
         f.write("!----- Axis Parameters -----\n")
-        if hasattr(data, 'raxis') and len(getattr(data, 'raxis', [])) > 0:
+        if hasattr(data, 'raxis') and np.size(getattr(data, 'raxis', [])) > 0:
             write_namelist_vec(f, 'RAXIS', data.raxis, typ='flt')
-        elif hasattr(data, 'raxis_cc') and len(getattr(data, 'raxis_cc', [])) > 0:
+        elif hasattr(data, 'raxis_cc') and np.size(getattr(data, 'raaxis_cc', [])) > 0:
             write_namelist_vec(f, 'RAXIS_CC', data.raxis_cc, typ='flt')
             if getattr(data, 'lasym', 0):
                 write_namelist_vec(f, 'RAXIS_CS', data.raxis_cs, typ='flt')
-        if hasattr(data, 'zaxis') and len(getattr(data, 'zaxis', [])) > 0:
+        if hasattr(data, 'zaxis') and np.size(getattr(data, 'zaxis', [])) > 0:
             write_namelist_vec(f, 'ZAXIS', data.zaxis, typ='flt')
-        elif hasattr(data, 'zaxis_cc') and len(getattr(data, 'zaxis_cc', [])) > 0:
+        elif hasattr(data, 'zaxis_cc') and np.size(getattr(data, 'zaxis_cc', [])) > 0:
             write_namelist_vec(f, 'ZAXIS_CC', data.zaxis_cc, typ='flt')
             if getattr(data, 'lasym', 0):
                 write_namelist_vec(f, 'ZAXIS_CS', data.zaxis_cs, typ='flt')
 
         f.write("!----- Boundary Parameters -----\n")
         # Write boundary Fourier coefficients as in MATLAB
-        # 2D arrays, shape: (mpol+1, 2*ntor+1)
+        # 2D arrays, shape: (2*ntor+1, mpol+1) after transpose
         for arr_name in ['rbc', 'zbs', 'rbs', 'zbc']:
             arr = getattr(data, arr_name, None)
             if arr is not None and arr.size > 0:
@@ -231,19 +225,19 @@ def write_vmec_input(filename, data):
 
         mpol = getattr(data, 'mpol', 5)
         ntor = getattr(data, 'ntor', 0)
-        rbc = getattr(data, 'rbc', np.zeros((mpol+1, 2*ntor+1)))
-        zbs = getattr(data, 'zbs', np.zeros((mpol+1, 2*ntor+1)))
-        rbs = getattr(data, 'rbs', np.zeros((mpol+1, 2*ntor+1)))
-        zbc = getattr(data, 'zbc', np.zeros((mpol+1, 2*ntor+1)))
+        rbc = getattr(data, 'rbc', np.zeros((2*ntor+1, mpol+1)))
+        zbs = getattr(data, 'zbs', np.zeros((2*ntor+1, mpol+1)))
+        rbs = getattr(data, 'rbs', np.zeros((2*ntor+1, mpol+1)))
+        zbc = getattr(data, 'zbc', np.zeros((2*ntor+1, mpol+1)))
         lasym = getattr(data, 'lasym', 0)
 
-        for i in range(mpol+1):
-            for j in range(2*ntor+1):
+        for i in range(2*ntor+1):
+            for j in range(mpol+1):
                 # Only print nonzero boundary coefficients for efficiency/readability
                 if (rbc[i, j] != 0.0) or (zbs[i, j] != 0.0):
-                    f.write(f"  RBC({j-ntor},{i}) = {rbc[i,j]:17.10e}  ZBS({j-ntor},{i}) = {zbs[i,j]:17.10e}\n")
+                    f.write(f"  RBC({i-ntor},{j}) = {rbc[i,j]:17.10e}  ZBS({i-ntor},{j}) = {zbs[i,j]:17.10e}\n")
                     if lasym:
-                        f.write(f"    RBS({j-ntor},{i}) = {rbs[i,j]:17.10e}  ZBC({j-ntor},{i}) = {zbc[i,j]:17.10e}\n")
+                        f.write(f"    RBS({i-ntor},{j}) = {rbs[i,j]:17.10e}  ZBC({i-ntor},{j}) = {zbc[i,j]:17.10e}\n")
 
         import datetime
         f.write(f"!----- Created by write_vmec_input {datetime.datetime.now().isoformat()} -----\n")

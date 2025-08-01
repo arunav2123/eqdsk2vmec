@@ -24,14 +24,15 @@ def convert_eqdsk_to_vmec(filename):
     
     # Populate VMEC namelist with data from conversion
     vmec_input.delt = 1.0
-    vmec_input.niter = 20000
+    vmec_input.niter = 1000
     vmec_input.tcon0 = 1.0
     vmec_input.ns_array = [16, 32, 64, 128]
-    vmec_input.ftol_array = [1e-30, 1e-30, 1e-30, 1e-12]
+    vmec_input.ftol_array = [1e-06, 1e-08, 1e-10, 1e-12]
     vmec_input.niter_array = [1000, 2000, 4000, 20000]
     vmec_input.lasym = 0
     vmec_input.nfp = 1
-    vmec_input.mpol = max(data.refou.shape) # Assuming refou is 2D and mpol is max dimension
+    # Set mpol and ntor based on the MATLAB script
+    vmec_input.mpol = 12
     vmec_input.ntor = 0
     vmec_input.nstep = 200
     vmec_input.ntheta = 2 * vmec_input.mpol + 6
@@ -42,7 +43,6 @@ def convert_eqdsk_to_vmec(filename):
     vmec_input.nvacskip = 6
     vmec_input.gamma = 0.0
     vmec_input.bloat = 1.0
-    # vmec_input.bcrit is removed in MATLAB, so we don't set it here
     vmec_input.spres_ped = 1.0
     vmec_input.pres_scale = 1.0
     vmec_input.pmass_type = 'akima_spline'
@@ -59,21 +59,16 @@ def convert_eqdsk_to_vmec(filename):
     vmec_input.ai = data.ai
     vmec_input.ai_aux_s = data.ai_aux_s
     vmec_input.ai_aux_f = data.ai_aux_f
-    vmec_input.raxis_cc = data.raxis # Assuming raxis is a scalar or single value
-    vmec_input.raxis_cs = data.zaxis # Assuming zaxis is a scalar or single value
-    vmec_input.zaxis_cc = data.zaxis # Assuming zaxis is a scalar or single value
-    vmec_input.zaxis_cs = data.zaxis # Assuming zaxis is a scalar or single value
-    
-    # Transpose as in MATLAB: data.refou' becomes data.refou.T
+
+    vmec_input.raxis_cc = np.atleast_1d(gdata['xaxis']) # Using gdata's xaxis
+    vmec_input.zaxis_cc = np.atleast_1d(gdata['zaxis']) # Using gdata's zaxis
+    vmec_input.raxis_cs = np.atleast_1d(data.zaxis) 
+    vmec_input.zaxis_cs = np.atleast_1d(data.zaxis) 
+
     vmec_input.rbc = data.refou.T
     vmec_input.zbs = data.zefou.T
     vmec_input.rbs = data.refou2.T
     vmec_input.zbc = data.zefou2.T
-    
-    # Remove fields as in MATLAB (Python doesn't have rmfield, just don't set them or delete if they exist)
-    # These were not initialized in VMECNamelist, so no need to remove
-    # vmec_input.raxis
-    # vmec_input.zaxis
     
     # Construct new filename
     base_filename = os.path.splitext(os.path.basename(filename))[0]
@@ -85,9 +80,4 @@ def convert_eqdsk_to_vmec(filename):
     print(f"Conversion complete. VMEC input file saved as {new_file}")
 
 if __name__ == '__main__':
-    # Example usage (for testing purposes)
-    # This part will not be executed when imported as a module
-    # You would typically call convert_eqdsk_to_vmec from another script or command line
     pass
-
-
