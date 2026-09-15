@@ -1,0 +1,15 @@
+{
+  "boundary_rms_distance_m": 0.03280522172858375,
+  "boundary_max_distance_m": 0.1665047389423333,
+  "pressure_max_knot_error_Pa": 0.0,
+  "q_max_knot_error": 1.5552004128949193e-12,
+  "flux_coordinate_max_knot_error": 4.9460435747050724e-14,
+  "profile_knot_count": 65,
+  "pressure_linear_diagnostic_max_error_Pa": 7.290509529411793e-09,
+  "q_linear_diagnostic_max_error": 1.5552004128949193e-12,
+  "phiedge_Wb": 3.32226928682687,
+  "lasym": false,
+  "mpol": 12,
+  "cocos_assumed": 5,
+  "symmetry_removed_max_m": 0.06317237867819663
+}

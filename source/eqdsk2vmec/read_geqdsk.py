@@ -1,3 +1,4 @@
+# Written by Arunav Kumar, MIT Plasma Science and Fusion center, 10th May, 2026
 import numpy as np
 
 def read_geqdsk(filename):
@@ -24,15 +25,19 @@ def read_geqdsk(filename):
             while len(values) < count:
                 line = file_handle.readline()
                 if not line:
-                    break
+                    raise ValueError(f"Truncated GEQDSK: expected {count} values, got {len(values)}")
                 line = line.rstrip('\n\r')
                 pos = 0
                 while pos < len(line) and len(values) < count:
                     chunk = line[pos : pos + width]
-                    try:
-                        values.append(float(chunk.strip()))
-                    except ValueError:
-                        pass
+                    if chunk.strip():
+                        try:
+                            value = float(chunk.replace('D', 'E').replace('d', 'e'))
+                        except ValueError as exc:
+                            raise ValueError(f'Invalid GEQDSK numeric field: {chunk!r}') from exc
+                        if not np.isfinite(value):
+                            raise ValueError('Non-finite GEQDSK numeric field')
+                        values.append(value)
                     pos += width
             return np.array(values)
 
@@ -42,18 +47,22 @@ def read_geqdsk(filename):
             if not line:
                 return np.array([])
             
-            parts = line.strip().split()
-            values = [int(p) for p in parts if p.isdigit()]
-            return np.array(values[:count])
+            try:
+                values = [int(line[i*5:(i+1)*5]) for i in range(count)]
+            except ValueError:
+                values = [int(p) for p in line.split()]
+            if len(values) != count or any(v < 0 for v in values):
+                raise ValueError('Invalid boundary/limiter counts')
+            return np.array(values)
         
         # --- Main parsing logic ---
         
         # Read header line
         header = f.readline()
-        if len(header) < 49:
+        if not header.strip():
             raise ValueError("Invalid GEQDSK header format: too short.")
         
-        header_parts = header[48:].split()
+        header_parts = header.split()[-3:]
         if len(header_parts) < 3:
             raise ValueError("Insufficient data in GEQDSK header for ipest, nx, nz.")
         
@@ -64,6 +73,8 @@ def read_geqdsk(filename):
         except ValueError:
             raise ValueError("Failed to parse integers (ipest, nx, nz) from GEQDSK header.")
 
+        if nx < 2 or nz < 2:
+            raise ValueError('GEQDSK grid dimensions must be >= 2')
         efit_data['nx'] = nx
         efit_data['nz'] = nz
         

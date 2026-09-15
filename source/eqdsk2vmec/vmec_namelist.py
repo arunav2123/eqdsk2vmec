@@ -1,3 +1,4 @@
+# Written by Arunav Kumar, MIT Plasma Science and Fusion center, 10th May, 2026
 import numpy as np
 import datetime
 
@@ -72,6 +73,8 @@ def write_namelist_str(f, name, val):
 
 def write_namelist_vec(f, name, arr, typ=None, per_line=8):
     arr = np.atleast_1d(arr)
+    if arr.size == 0:
+        return
     if typ == 'int':
         f.write(f"  {name.upper()} =")
         for i, v in enumerate(arr):
@@ -99,11 +102,33 @@ def write_vmec_input(filename, data):
     Write a VMEC input structure to a file.
     """
     if not hasattr(data, 'datatype') or data.datatype != 'VMEC_input':
-        print('Error: Not VMEC input data!')
-        return -1
+        raise ValueError('Expected a VMEC_input structure')
 
+    mpol, ntor = data.mpol, data.ntor
+    arrays = {}
+    for name in ('rbc', 'zbs', 'rbs', 'zbc'):
+        arr = np.asarray(getattr(data, name, []), dtype=float)
+        if arr.size == 0:
+            arr = np.zeros((2*ntor+1, mpol))
+        if arr.shape != (2*ntor+1, mpol) or not np.all(np.isfinite(arr)):
+            raise ValueError(f'{name} must have finite shape {(2*ntor+1, mpol)}')
+        arrays[name] = arr
+    for prefix in ('am', 'ai', 'ac'):
+        knots = np.asarray(getattr(data, prefix+'_aux_s', []))
+        values = np.asarray(getattr(data, prefix+'_aux_f', []))
+        if knots.size > 101:
+            raise ValueError('VMEC2000 supports at most 101 auxiliary profile knots')
+        if knots.shape != values.shape or not np.all(np.isfinite(values)):
+            raise ValueError(f'{prefix} spline knots and values must match and be finite')
+        if knots.size and (not np.all(np.isfinite(knots)) or np.any(np.diff(knots) <= 0)
+                           or knots[0] != 0 or knots[-1] != 1):
+            raise ValueError(f'{prefix} spline knots must increase from 0 to 1')
+    if data.ncurr == 1 and not (len(data.ac) or len(data.ac_aux_s)):
+        raise ValueError('NCURR=1 requires an explicitly supplied current profile')
     with open(filename, 'w') as f:
         f.write("&INDATA\n")
+        if hasattr(data, "comment"):
+            f.write("! " + data.comment.replace("\n", " ") + "\n")
         f.write("!----- Runtime Parameters -----\n")
         write_namelist_flt(f, 'delt', getattr(data, 'delt', 1.0))
         write_namelist_int(f, 'niter', getattr(data, 'niter', 20000))
@@ -203,41 +228,25 @@ def write_vmec_input(filename, data):
         f.write("!----- Axis Parameters -----\n")
         if hasattr(data, 'raxis') and np.size(getattr(data, 'raxis', [])) > 0:
             write_namelist_vec(f, 'RAXIS', data.raxis, typ='flt')
-        elif hasattr(data, 'raxis_cc') and np.size(getattr(data, 'raaxis_cc', [])) > 0:
+        elif hasattr(data, 'raxis_cc') and np.size(getattr(data, 'raxis_cc', [])) > 0:
             write_namelist_vec(f, 'RAXIS_CC', data.raxis_cc, typ='flt')
             if getattr(data, 'lasym', 0):
                 write_namelist_vec(f, 'RAXIS_CS', data.raxis_cs, typ='flt')
-        if hasattr(data, 'zaxis') and np.size(getattr(data, 'zaxis', [])) > 0:
+        if np.size(getattr(data, 'zaxis', [])) > 0:
             write_namelist_vec(f, 'ZAXIS', data.zaxis, typ='flt')
-        elif hasattr(data, 'zaxis_cc') and np.size(getattr(data, 'zaxis_cc', [])) > 0:
-            write_namelist_vec(f, 'ZAXIS_CC', data.zaxis_cc, typ='flt')
-            if getattr(data, 'lasym', 0):
-                write_namelist_vec(f, 'ZAXIS_CS', data.zaxis_cs, typ='flt')
+        else:
+            write_namelist_vec(f, 'ZAXIS_CS', data.zaxis_cs, typ='flt')
+            if data.lasym:
+                write_namelist_vec(f, 'ZAXIS_CC', data.zaxis_cc, typ='flt')
 
         f.write("!----- Boundary Parameters -----\n")
-        # Write boundary Fourier coefficients as in MATLAB
-        # 2D arrays, shape: (2*ntor+1, mpol+1) after transpose
-        for arr_name in ['rbc', 'zbs', 'rbs', 'zbc']:
-            arr = getattr(data, arr_name, None)
-            if arr is not None and arr.size > 0:
-                arr = np.atleast_2d(arr)
-                setattr(data, arr_name, arr)
-
-        mpol = getattr(data, 'mpol', 5)
-        ntor = getattr(data, 'ntor', 0)
-        rbc = getattr(data, 'rbc', np.zeros((2*ntor+1, mpol+1)))
-        zbs = getattr(data, 'zbs', np.zeros((2*ntor+1, mpol+1)))
-        rbs = getattr(data, 'rbs', np.zeros((2*ntor+1, mpol+1)))
-        zbc = getattr(data, 'zbc', np.zeros((2*ntor+1, mpol+1)))
-        lasym = getattr(data, 'lasym', 0)
-
-        for i in range(2*ntor+1):
-            for j in range(mpol+1):
-                # Only print nonzero boundary coefficients for efficiency/readability
-                if (rbc[i, j] != 0.0) or (zbs[i, j] != 0.0):
-                    f.write(f"  RBC({i-ntor},{j}) = {rbc[i,j]:17.10e}  ZBS({i-ntor},{j}) = {zbs[i,j]:17.10e}\n")
-                    if lasym:
-                        f.write(f"    RBS({i-ntor},{j}) = {rbs[i,j]:17.10e}  ZBC({i-ntor},{j}) = {zbc[i,j]:17.10e}\n")
+        names = ('rbc', 'zbs', 'rbs', 'zbc') if data.lasym else ('rbc', 'zbs')
+        for name in names:
+            for i in range(2*ntor+1):
+                for m in range(mpol):
+                    value = arrays[name][i, m]
+                    if value != 0:
+                        f.write(f"  {name.upper()}({i-ntor},{m}) = {value:.14e}\n")
 
         import datetime
         f.write(f"!----- Created by write_vmec_input {datetime.datetime.now().isoformat()} -----\n")

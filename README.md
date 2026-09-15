@@ -1,120 +1,113 @@
-# GEQDSK to VMEC Converter
+# GEQDSK to VMEC converter
 
-A Python package to convert GEQDSK files to VMEC input format, translated from MATLAB code.
+Convert axisymmetric tokamak GEQDSK equilibria into fixed-boundary VMEC INDATA
+namelists. The converter prescribes pressure and rotational transform (`NCURR=0`)
+and can compare the **written input** with the GEQDSK data. It never runs VMEC.
 
-## Overview
+## Install and run
 
-This package provides functionality to read GEQDSK (Equilibrium Disk) files and convert them to VMEC (Variational Moments Equilibrium Code) input format. It is based on the translation of MATLAB code that performs similar conversions for tokamak plasma equilibrium data.
-
-## Features
-
-- Read GEQDSK files 
-- Convert GEQDSK data to VMEC input parameters
-- Generate VMEC namelist input files
-- Support for various VMEC configuration parameters
-
-## Installation
-
-### From source
+Requires Python 3.9+, NumPy, SciPy, Matplotlib, and f90nml:
 
 ```bash
-git clone <repository-url>
-cd eqdsk2vmec_converter
 pip install -e .
+python example_usage.py Device/KSTAR/g02895743.geq \
+  --output input.g02895743 --plot comparison.png
 ```
 
-### Dependencies
-
-- numpy
-- freeqdsk
-
-## Usage
-
-### Basic Usage
+The omitted coordinate convention produces an explicit warning; specify
+`--cocos N` when the producer's COCOS index is known. Use `--show` to display
+interactively or `MPLBACKEND=Agg` for headless plotting.
 
 ```python
-from eqdsk2vmec_converter.eqdsk2vmec import convert_eqdsk_to_vmec
+from eqdsk2vmec import convert_eqdsk_to_vmec
 
-# Convert an EQDSK file to VMEC input
-convert_eqdsk_to_vmec('g02895743.geq')
+output = convert_eqdsk_to_vmec(
+    'Device/KSTAR/g02895743.geq',
+    output_path='input.g02895743',
+    plot_path='comparison.png',
+    mpol=12,
+    lasym=False,
+    # cocos=5,  # Set only after checking the source convention.
+)
 ```
 
-This will create a VMEC input file named `input.g02895743` in the current directory.
+The function returns the output `Path`. Plotting is optional and no GUI opens by
+default. A plot also writes an adjacent JSON file with comparison metrics.
 
-### Advanced Usage
+## Geometry and symmetry
 
-You can also use the individual components:
+`NTOR=0` expresses tokamak axisymmetry. `LASYM=False` remains the default, explicitly
+projecting the boundary onto an **up–down symmetric shape about Z=0**. Axisymmetry
+alone does not imply up–down symmetry. The converter warns when discarded
+asymmetric components exceed 1 mm. Use `lasym=True` / `--lasym` to preserve them.
+The symmetric initial axis has Z=0; the asymmetric case retains the source Z axis.
 
-```python
-from eqdsk2vmec_converter.read_geqdsk import read_geqdsk
-from eqdsk2vmec_converter.eqdisk2vmec_inputfile import eqdisk2vmec_inputfile
-from eqdsk2vmec_converter.vmec_namelist import vmec_namelist_init, write_vmec_input
+Boundary points are interpreted as an ordered polar graph about (R_axis, 0) in
+symmetric mode or (R_axis, Z_axis) in asymmetric mode. Non-star-shaped boundaries
+are rejected. Nonuniform samples are periodically resampled in geometric angle
+before the Fourier transform. `MPOL=12` retains precisely m=0 through 11 in both
+fitting and writing; increase `--mpol` to investigate truncation error, subject to
+sufficient distinct input points. Sharp separatrix tips cannot be represented
+exactly by a finite smooth Fourier series.
 
-# Read EQDSK file
-gdata = read_geqdsk('your_file.geq')
+## Profiles and coordinate conventions
 
-# Convert to VMEC data structure
-data = eqdisk2vmec_inputfile('your_file.geq', gdata)
+Toroidal flux is integrated analytically from a PCHIP representation of q on
+normalized poloidal flux. Both increasing and decreasing physical poloidal flux
+are supported. Zero flux span, zero/sign-changing q, nonfinite data, and malformed
+files are rejected rather than silently propagated.
 
-# Initialize VMEC namelist and customize parameters
-vmec_input = vmec_namelist_init('indata')
-vmec_input.delt = 1.0
-vmec_input.niter = 20000
-# ... set other parameters
+COCOS indices 1–8 and 11–18 are supported for **signed q**. Conversion accounts for
+q handedness, the toroidal direction of B/current, and whether psi is in Wb or
+Wb/rad. With `cocos=None`, the legacy reciprocal-q convention is made explicit as
+an assumption of COCOS 5, with a warning and a comment in the namelist. GEQDSK
+files do not reliably encode COCOS; the supplied fixtures' conventions have not
+been independently established. For sources that replace signed q with |q|,
+restore its convention-correct sign before conversion; the code cannot infer it
+from positive q alone.
 
-# Write VMEC input file
-write_vmec_input('input.your_file', vmec_input)
+Pressure and iota are written as Akima spline knots at normalized toroidal flux.
+At most 101 original profile samples are retained to respect VMEC2000's
+`ndatafmax=101`. For larger profiles, knots are selected by repeatedly adding the
+point with the largest scaled pressure/iota linear-interpolation error. Axis and
+edge are always retained. Polynomial coefficients remain available with both
+endpoints constrained, but are inactive under the default spline profile types.
+
+The invalid sum `p' + FF'` has been removed. No toroidal current profile is inferred.
+`CURTOR` records the convention-adjusted source total current, but with `NCURR=0`
+it is **not an independent constraint**. A caller selecting `NCURR=1` in the
+low-level writer must supply a physically derived current profile.
+
+## Comparison plots
+
+See [generated comparisons](artifacts/comparisons/README.md).
+The plot reads the namelist back with f90nml and reconstructs only the modes that
+will be retained, honoring LASYM and MPOL. It overlays the GEQDSK boundary and
+pressure/q samples with the written boundary and spline knots, and shows the
+boundary distance errors. The gray interior contours come **only from GEQDSK**;
+there is no converted interior equilibrium until VMEC is solved separately.
+
+Profile lines connect knots; they are not VMEC-evaluated splines. JSON metrics
+separate serialization errors at retained knots from linear-interpolation
+errors evaluated at all source samples. Boundary distances are one-way nearest
+Euclidean distances from original points to an 8192-point reconstructed curve,
+not a Hausdorff distance or a force-balance error.
+
+## Tests
+
+```bash
+MPLBACKEND=Agg python -m unittest discover -v
 ```
 
-## File Structure
+Tests cover analytic flux integration, decreasing flux, COCOS transformations,
+polynomial endpoints, nonuniform boundary sampling, asymmetric geometry, parsed
+namelist coefficients, malformed files, and both supplied equilibria. These tests
+validate conversion and serialization, not VMEC convergence or force balance.
 
-```
-eqdsk2vmec_converter/
-├── eqdsk2vmec_converter/
-│   ├── __init__.py
-│   ├── read_geqdsk.py          # EQDSK file reader
-│   ├── eqdisk2vmec_inputfile.py # EQDSK to VMEC data converter
-│   ├── vmec_namelist.py        # VMEC namelist handling
-│   └── eqdsk2vmec.py          # Main conversion function
-├── tests/
-│   └── __init__.py
-├── setup.py
-└── README.md
-```
+## References
 
-## VMEC Parameters
-
-The converter sets the following VMEC parameters based on the original MATLAB code:
-
-- `delt = 1.0`
-- `niter = 20000`
-- `tcon0 = 1.0`
-- `ns_array = [16, 32, 64, 128]`
-- `ftol_array = [1e-30, 1e-30, 1e-30, 1e-12]`
-- `niter_array = [1000, 2000, 4000, 20000]`
-- `lasym = 0`
-- `nfp = 1`
-- `ntor = 0`
-- `nstep = 200`
-- `lfreeb = 0`
-- `nvacskip = 6`
-- `gamma = 0.0`
-- `bloat = 1.0`
-- `spres_ped = 1.0`
-- `pres_scale = 1.0`
-- Various profile types set to 'akima_spline'
-
-## Notes
-
-- This is a direct translation from MATLAB code and may require further refinement for specific use cases
-- The conversion of boundary coefficients (Fourier modes) is currently simplified and may need enhancement
-- Profile data conversion assumes specific mappings from EQDSK to VMEC parameters
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License.
-
+- [VMEC input parameters](https://princetonuniversity.github.io/STELLOPT/VMEC%20Input%20Namelist%20(v8.47).html)
+- [FreeQDSK format and conventions](https://freeqdsk.readthedocs.io/en/stable/geqdsk.html)
+- [Sauter and Medvedev: COCOS, Table I](https://www.epfl.ch/research/domains/swiss-plasma-center/wp-content/uploads/2018/10/Sauter_COCOS_Tokamak_Coordinate_Conventions.pdf)
+- [VMEC sign conventions](https://terpconnect.umd.edu/~mattland/assets/notes/vmec_signs.pdf)
+- [VMEC2000 array limits](https://github.com/PrincetonUniversity/STELLOPT/blob/develop/LIBSTELL/Sources/Modules/vparams.f)

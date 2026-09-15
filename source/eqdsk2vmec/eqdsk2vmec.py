@@ -1,83 +1,43 @@
-import os
+# Written by Arunav Kumar, MIT Plasma Science and Fusion center, 10th May, 2026
+"""Public GEQDSK-to-VMEC conversion entry point."""
+from pathlib import Path
 import numpy as np
 from .read_geqdsk import read_geqdsk
 from .eqdisk2vmec_inputfile import eqdisk2vmec_inputfile
 from .vmec_namelist import vmec_namelist_init, write_vmec_input
 
-def convert_eqdsk_to_vmec(filename):
+
+def convert_eqdsk_to_vmec(filename, *, output_path=None, plot_path=None,
+                          show=False, mpol=12, lasym=False, cocos=None):
+    """Write a fixed-boundary, prescribed-iota input; optionally compare it visually.
+
+    Returns the output Path. LASYM=False explicitly symmetrizes about Z=0.
+    Specify the producer's COCOS convention; None warns and assumes COCOS 5.
+    No VMEC executable is invoked.
     """
-    Converts an EQDSK file to a VMEC input file.
-    
-    Args:
-        filename (str): The path to the EQDSK file.
-    """
-    print(f"Starting conversion for {filename}")
-    
-    # Read GEQDSK data
     gdata = read_geqdsk(filename)
-    
-    # Convert EQDSK data to VMEC input data structure
-    data = eqdisk2vmec_inputfile(filename, gdata)
-    
-    # Initialize VMEC namelist
-    vmec_input = vmec_namelist_init("indata")
-    
-    # Populate VMEC namelist with data from conversion
-    vmec_input.delt = 1.0
-    vmec_input.niter = 1000
-    vmec_input.tcon0 = 1.0
-    vmec_input.ns_array = [16, 32, 64, 128]
-    vmec_input.ftol_array = [1e-06, 1e-08, 1e-10, 1e-12]
-    vmec_input.niter_array = [1000, 2000, 4000, 20000]
-    vmec_input.lasym = 0
-    vmec_input.nfp = 1
-    # Set mpol and ntor based on the MATLAB script
-    vmec_input.mpol = 12
-    vmec_input.ntor = 0
-    vmec_input.nstep = 200
-    vmec_input.ntheta = 2 * vmec_input.mpol + 6
+    data = eqdisk2vmec_inputfile(filename, gdata, mpol=mpol, lasym=lasym, cocos=cocos)
+    vmec_input = vmec_namelist_init('indata')
+    vmec_input.ftol_array = [1e-6, 1e-8, 1e-10, 1e-12]
+    vmec_input.lasym = lasym
+    vmec_input.mpol = mpol
+    vmec_input.ntheta = 2*mpol + 6
     vmec_input.phiedge = data.phiedge
-    vmec_input.lfreeb = 0
-    vmec_input.mgrid_file = ''
-    vmec_input.extcur = [0, 0, 0]
-    vmec_input.nvacskip = 6
-    vmec_input.gamma = 0.0
-    vmec_input.bloat = 1.0
-    vmec_input.spres_ped = 1.0
-    vmec_input.pres_scale = 1.0
-    vmec_input.pmass_type = 'akima_spline'
-    vmec_input.am = data.am
-    vmec_input.am_aux_s = data.am_aux_s
-    vmec_input.am_aux_f = data.am_aux_f
-    vmec_input.pcurr_type = 'akima_spline_ip'
     vmec_input.curtor = data.curtor
     vmec_input.ncurr = 0
-    vmec_input.ac = data.ac
-    vmec_input.ac_aux_s = data.ac_aux_s
-    vmec_input.ac_aux_f = data.ac_aux_f
-    vmec_input.piota_type = 'akima_spline'
-    vmec_input.ai = data.ai
-    vmec_input.ai_aux_s = data.ai_aux_s
-    vmec_input.ai_aux_f = data.ai_aux_f
-
-    vmec_input.raxis_cc = np.atleast_1d(gdata['xaxis']) # Using gdata's xaxis
-    vmec_input.zaxis_cc = np.atleast_1d(gdata['zaxis']) # Using gdata's zaxis
-    vmec_input.raxis_cs = np.atleast_1d(data.zaxis) 
-    vmec_input.zaxis_cs = np.atleast_1d(data.zaxis) 
-
-    vmec_input.rbc = data.refou.T
-    vmec_input.zbs = data.zefou.T
-    vmec_input.rbs = data.refou2.T
-    vmec_input.zbc = data.zefou2.T
-    
-    # Construct new filename
-    base_filename = os.path.splitext(os.path.basename(filename))[0]
-    new_file = f"input.{base_filename}"
-    
-    # Write VMEC input file
-    write_vmec_input(new_file, vmec_input)
-    
-    print(f"Conversion complete. VMEC input file saved as {new_file}")
-
-if __name__ == '__main__':
-    pass
+    for name in ('am', 'am_aux_s', 'am_aux_f', 'ai', 'ai_aux_s', 'ai_aux_f'):
+        setattr(vmec_input, name, getattr(data, name))
+    vmec_input.raxis_cc = np.array([data.raxis])
+    vmec_input.raxis_cs = np.zeros(1)
+    vmec_input.zaxis_cs = np.zeros(1)
+    vmec_input.zaxis_cc = np.array([data.zaxis if lasym else 0.0])
+    for name, source in [('rbc','refou'), ('zbs','zefou'), ('rbs','refou2'), ('zbc','zefou2')]:
+        setattr(vmec_input, name, getattr(data, source).T)
+    vmec_input.comment = (f'Input COCOS={data.cocos}; NCURR=0: current is not independently constrained. '
+                          f'LASYM={bool(lasym)}; removed asymmetry max={data.symmetry_removed_max_m:.6g} m.')
+    output = Path(output_path) if output_path is not None else Path(f'input.{Path(filename).stem}')
+    write_vmec_input(output, vmec_input)
+    if plot_path is not None or show:
+        from .comparison import plot_comparison
+        plot_comparison(gdata, output, data, plot_path=plot_path, show=show)
+    return output
