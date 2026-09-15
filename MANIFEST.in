@@ -1,0 +1,3 @@
+include LICENSE README.md pyproject.toml example_usage.py
+recursive-include tests *.py
+recursive-include Device *.geq
